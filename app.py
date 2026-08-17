@@ -35,7 +35,6 @@ st.markdown(
     .block-container {padding-top: 1.5rem; padding-bottom: 2rem;}
     .main-title {font-size: 2.15rem; font-weight: 750; margin-bottom: .15rem;}
     .subtitle {color: #556070; margin-bottom: 1.3rem;}
-    .info-box {padding: .85rem 1rem; border: 1px solid #dfe5ec; border-radius: 12px; background: #f7f9fc;}
     div[data-testid="stMetric"] {border: 1px solid #e2e8f0; padding: .7rem; border-radius: 12px;}
     </style>
     """,
@@ -158,10 +157,9 @@ with right:
     c3, c4 = st.columns(2)
     c3.metric("Malignant", int(counts.get(1, 0)))
     c4.metric("Benign", int(counts.get(0, 0)))
-    st.markdown(
-        f'<div class="info-box"><b>Source:</b> {metadata["dataset_name"]}<br><b>Positive class:</b> malignant (1)</div>',
-        unsafe_allow_html=True,
-    )
+    with st.container(border=True):
+        st.markdown(f"**Source:** {metadata['dataset_name']}")
+        st.markdown("**Positive class:** malignant (1)")
 
 st.subheader("All-Model Comparison")
 st.dataframe(
