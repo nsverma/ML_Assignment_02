@@ -1,0 +1,7 @@
+Logistic Regression {'ML Model Name': 'Logistic Regression', 'Accuracy': 0.9649122807017544, 'AUC': 0.996031746031746, 'Precision': 0.975, 'Recall': 0.9285714285714286, 'F1': 0.9512195121951219, 'MCC': 0.9245181185940877}
+Decision Tree {'ML Model Name': 'Decision Tree', 'Accuracy': 0.8771929824561403, 'AUC': 0.9654431216931217, 'Precision': 0.9117647058823529, 'Recall': 0.7380952380952381, 'F1': 0.8157894736842105, 'MCC': 0.7343160511831469}
+kNN {'ML Model Name': 'kNN', 'Accuracy': 0.956140350877193, 'AUC': 0.982473544973545, 'Precision': 0.9743589743589743, 'Recall': 0.9047619047619048, 'F1': 0.9382716049382716, 'MCC': 0.9058238738943076}
+Naive Bayes {'ML Model Name': 'Naive Bayes', 'Accuracy': 0.9210526315789473, 'AUC': 0.9890873015873015, 'Precision': 0.9230769230769231, 'Recall': 0.8571428571428571, 'F1': 0.8888888888888888, 'MCC': 0.8291617197562593}
+Random Forest (Ensemble) {'ML Model Name': 'Random Forest (Ensemble)', 'Accuracy': 0.9736842105263158, 'AUC': 0.994212962962963, 'Precision': 1.0, 'Recall': 0.9285714285714286, 'F1': 0.9629629629629629, 'MCC': 0.9441549509633318}
+
+Saved models, metrics, full_dataset.csv and test_data.csv.
