@@ -28,7 +28,7 @@ Split used:
 
 ## c. GitHub Repository Link
 
-**GitHub Repository:** `PASTE_YOUR_GITHUB_REPOSITORY_LINK_HERE`
+**GitHub Repository:** https://github.com/nsverma/ML_Assignment_02
 
 ## d. Models used and evaluation
 
