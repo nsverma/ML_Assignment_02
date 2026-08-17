@@ -50,7 +50,7 @@ def load_assets():
             name: joblib.load(MODEL_DIR / filename)
             for name, filename in metadata["model_files"].items()
         }
-        return metadata, models, False
+        return metadata, models
 
     # Pickled scikit-learn estimators are not guaranteed to work across versions.
     # Rebuild equivalent in-memory models when the runtime differs from training.
@@ -67,7 +67,7 @@ def load_assets():
     models = build_models()
     for model in models.values():
         model.fit(X_train, y_train)
-    return metadata, models, True
+    return metadata, models
 
 
 def get_metrics(model, X, y):
@@ -83,7 +83,7 @@ def get_metrics(model, X, y):
     }, pred, prob
 
 
-metadata, models, rebuilt_for_runtime = load_assets()
+metadata, models = load_assets()
 features = metadata["feature_columns"]
 
 st.markdown('<div class="main-title">Diagnostic Classification Lab</div>', unsafe_allow_html=True)
@@ -91,13 +91,6 @@ st.markdown(
     '<div class="subtitle">Machine Learning Assignment 2 · Breast Cancer Wisconsin (Diagnostic)</div>',
     unsafe_allow_html=True,
 )
-
-if rebuilt_for_runtime:
-    st.warning(
-        "The saved models were created with scikit-learn "
-        f'{metadata["sklearn_version"]}, but this app is running {sklearn_version}. '
-        "Compatible models were rebuilt in memory for this session."
-    )
 
 with st.sidebar:
     st.header("Experiment Controls")
