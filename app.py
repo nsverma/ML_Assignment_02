@@ -5,6 +5,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
+from sklearn import __version__ as sklearn_version
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import (
     accuracy_score,
     roc_auc_score,
@@ -15,6 +17,8 @@ from sklearn.metrics import (
     confusion_matrix,
     classification_report,
 )
+
+from train_models import build_models
 
 ROOT = Path(__file__).resolve().parent
 MODEL_DIR = ROOT / "model"
@@ -41,11 +45,29 @@ st.markdown(
 @st.cache_resource
 def load_assets():
     metadata = json.loads((MODEL_DIR / "metadata.json").read_text(encoding="utf-8"))
-    models = {
-        name: joblib.load(MODEL_DIR / filename)
-        for name, filename in metadata["model_files"].items()
-    }
-    return metadata, models
+    if metadata.get("sklearn_version") == sklearn_version:
+        models = {
+            name: joblib.load(MODEL_DIR / filename)
+            for name, filename in metadata["model_files"].items()
+        }
+        return metadata, models, False
+
+    # Pickled scikit-learn estimators are not guaranteed to work across versions.
+    # Rebuild equivalent in-memory models when the runtime differs from training.
+    df = pd.read_csv(ROOT / "full_dataset.csv")
+    features = metadata["feature_columns"]
+    target = metadata["target"]
+    X_train, _, y_train, _ = train_test_split(
+        df[features],
+        df[target],
+        test_size=0.20,
+        random_state=metadata["random_state"],
+        stratify=df[target],
+    )
+    models = build_models()
+    for model in models.values():
+        model.fit(X_train, y_train)
+    return metadata, models, True
 
 
 def get_metrics(model, X, y):
@@ -61,7 +83,7 @@ def get_metrics(model, X, y):
     }, pred, prob
 
 
-metadata, models = load_assets()
+metadata, models, rebuilt_for_runtime = load_assets()
 features = metadata["feature_columns"]
 
 st.markdown('<div class="main-title">Diagnostic Classification Lab</div>', unsafe_allow_html=True)
@@ -69,6 +91,13 @@ st.markdown(
     '<div class="subtitle">Machine Learning Assignment 2 · Breast Cancer Wisconsin (Diagnostic)</div>',
     unsafe_allow_html=True,
 )
+
+if rebuilt_for_runtime:
+    st.warning(
+        "The saved models were created with scikit-learn "
+        f'{metadata["sklearn_version"]}, but this app is running {sklearn_version}. '
+        "Compatible models were rebuilt in memory for this session."
+    )
 
 with st.sidebar:
     st.header("Experiment Controls")
