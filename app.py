@@ -27,6 +27,25 @@ st.set_page_config(
     layout="wide",
 )
 
+# Streamlit's interactive dataframe renders its own header grid and does not
+# apply Pandas Styler alignment to column headings.
+st.markdown(
+    """
+    <style>
+    div[data-testid="stDataFrame"] div[role="columnheader"] {
+        justify-content: center !important;
+        text-align: center !important;
+    }
+    div[data-testid="stDataFrame"] div[role="columnheader"] > div {
+        justify-content: center !important;
+        text-align: center !important;
+        width: 100% !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 MODEL_SUMMARIES = {
     "Logistic Regression": "Scaled linear baseline with directly interpretable malignancy probabilities.",
     "Decision Tree": "Compact nonlinear decision rules constrained to reduce overfitting.",
@@ -74,6 +93,13 @@ def get_metrics(model, X, y):
         "F1": f1_score(y, pred, zero_division=0),
         "MCC": matthews_corrcoef(y, pred),
     }, pred, prob
+
+
+def centered_headers(frame):
+    """Return a table style with centered column headings."""
+    return frame.style.set_table_styles(
+        [{"selector": "th", "props": [("text-align", "center")]}]
+    )
 
 
 metadata, models = load_assets()
@@ -167,8 +193,33 @@ metrics, predictions, probabilities, cm = cache[selected_model]
 if view == "Model comparison":
     st.header("Model comparison")
     st.caption("Ranked by MCC, then F1 and AUC. False negatives are malignant cases predicted as benign.")
+
+    chart_col, safety_col = st.columns([1.6, 1])
+    with chart_col:
+        st.subheader("Performance by model")
+        chart_metrics = st.multiselect(
+            "Metrics to compare",
+            ["Accuracy", "AUC", "Precision", "Recall", "F1", "MCC"],
+            default=["AUC", "Recall", "F1", "MCC"],
+        )
+        if chart_metrics:
+            performance_chart = comparison.set_index("Model")[chart_metrics]
+            st.bar_chart(performance_chart, y=chart_metrics, height=380)
+        else:
+            st.info("Select at least one metric to display the comparison chart.")
+
+    with safety_col:
+        st.subheader("Missed malignant cases")
+        safety_chart = comparison.set_index("Model")[["False negatives"]]
+        st.bar_chart(safety_chart, y="False negatives", height=380)
+        st.caption("Lower is better. A false negative is a malignant case predicted as benign.")
+
+    st.subheader("Detailed results")
+    comparison_table = centered_headers(comparison).format(
+        {c: "{:.4f}" for c in ["Accuracy", "AUC", "Precision", "Recall", "F1", "MCC"]}
+    )
     st.dataframe(
-        comparison.style.format({c: "{:.4f}" for c in ["Accuracy", "AUC", "Precision", "Recall", "F1", "MCC"]}),
+        comparison_table,
         width="stretch",
         hide_index=True,
     )
@@ -177,7 +228,7 @@ if view == "Model comparison":
         icon=":material/verified:",
     )
     with st.expander("Preview evaluation data", icon=":material/database:"):
-        st.dataframe(df.head(10), width="stretch", hide_index=True)
+        st.dataframe(centered_headers(df.head(10)), width="stretch", hide_index=True)
 
 elif view == "Selected model":
     st.header(selected_model)
@@ -201,7 +252,7 @@ elif view == "Selected model":
                 index=["Actual benign", "Actual malignant"],
                 columns=["Predicted benign", "Predicted malignant"],
             )
-            st.dataframe(cm_df, width="stretch")
+            st.dataframe(centered_headers(cm_df), width="stretch")
             outcome_cols = st.columns(2)
             outcome_cols[0].metric("Missed malignant", int(fn), help="False negatives")
             outcome_cols[1].metric("Benign flagged", int(fp), help="False positives")
@@ -216,7 +267,7 @@ elif view == "Selected model":
             zero_division=0,
         )
         report_df = pd.DataFrame(report).transpose()
-        st.dataframe(report_df.style.format("{:.4f}"), width="stretch")
+        st.dataframe(centered_headers(report_df).format("{:.4f}"), width="stretch")
 
     if fn:
         st.warning(f"This model missed {int(fn)} malignant case(s) in the current test data.", icon=":material/warning:")
@@ -237,7 +288,7 @@ else:
     only_errors = st.toggle("Show prediction errors only")
     visible_preview = preview[preview["Outcome"] == "Error"] if only_errors else preview
     st.dataframe(
-        visible_preview,
+        centered_headers(visible_preview),
         width="stretch",
         hide_index=True,
         column_config={
