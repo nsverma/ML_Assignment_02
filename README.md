@@ -77,6 +77,9 @@ The application implements all minimum UI features requested in the assignment:
 - Classification report
 - Prediction preview
 - Results re-computed on the uploaded compatible test CSV
+- Clinical teal theme with user-switchable light and dark modes
+- Three focused workspaces: model comparison, selected-model diagnostics and prediction review
+- False-negative counts and malignant-class recall highlighted for safer error interpretation
 
 ## Repository structure
 

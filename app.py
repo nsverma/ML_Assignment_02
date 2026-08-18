@@ -1,9 +1,7 @@
 from pathlib import Path
 import json
 import joblib
-import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import streamlit as st
 from sklearn import __version__ as sklearn_version
 from sklearn.model_selection import train_test_split
@@ -24,22 +22,18 @@ ROOT = Path(__file__).resolve().parent
 MODEL_DIR = ROOT / "model"
 
 st.set_page_config(
-    page_title="Diagnostic Classification Lab",
-    page_icon="🧪",
+    page_title="Breast cancer model studio",
+    page_icon=":material/health_metrics:",
     layout="wide",
 )
 
-st.markdown(
-    """
-    <style>
-    .block-container {padding-top: 1.5rem; padding-bottom: 2rem;}
-    .main-title {font-size: 2.15rem; font-weight: 750; margin-bottom: .15rem;}
-    .subtitle {color: #556070; margin-bottom: 1.3rem;}
-    div[data-testid="stMetric"] {border: 1px solid #e2e8f0; padding: .7rem; border-radius: 12px;}
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+MODEL_SUMMARIES = {
+    "Logistic Regression": "Scaled linear baseline with directly interpretable malignancy probabilities.",
+    "Decision Tree": "Compact nonlinear decision rules constrained to reduce overfitting.",
+    "kNN": "Scaled distance-based classifier using the seven nearest training cases.",
+    "Naive Bayes": "Fast probabilistic baseline with a Gaussian feature assumption.",
+    "Random Forest (Ensemble)": "Four hundred decision trees combined to improve stability and generalization.",
+}
 
 @st.cache_resource
 def load_assets():
@@ -85,51 +79,57 @@ def get_metrics(model, X, y):
 metadata, models = load_assets()
 features = metadata["feature_columns"]
 
-st.markdown('<div class="main-title">Diagnostic Classification Lab</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="subtitle">Machine Learning Assignment 2 · Breast Cancer Wisconsin (Diagnostic)</div>',
-    unsafe_allow_html=True,
+st.title("Breast cancer model studio")
+st.caption(
+    "Compare five classifiers on the Breast Cancer Wisconsin (Diagnostic) dataset. "
+    "Malignant is treated as the positive class."
 )
+st.markdown(":blue-badge[30 numeric features] :violet-badge[5 classifiers] :green-badge[Stratified holdout]")
 
 with st.sidebar:
-    st.header("Experiment Controls")
+    st.header("Evaluation controls")
     uploaded = st.file_uploader(
-        "Upload test data (CSV)",
+        "Test dataset",
         type=["csv"],
-        help="The CSV must contain all 30 feature columns and the diagnosis target column.",
+        help="Upload a CSV containing all 30 feature columns and the diagnosis target.",
     )
-    selected_model = st.selectbox("Select a model", list(models.keys()))
-    st.divider()
-    st.caption("Target mapping")
-    st.write("**1 = malignant**")
-    st.write("**0 = benign**")
-    st.caption("Split used during training: 80% train / 20% test, stratified, random_state=42")
+    selected_model = st.selectbox("Model to inspect", list(models.keys()))
+    st.caption(MODEL_SUMMARIES[selected_model])
+    with st.expander("Data contract", icon=":material/table_chart:"):
+        st.write("`diagnosis = 1` → malignant")
+        st.write("`diagnosis = 0` → benign")
+        st.caption("Training split: 80/20 · stratified · random state 42")
+    st.caption("Educational demonstration — not a clinical diagnostic tool.")
 
-if uploaded is None:
-    df = pd.read_csv(ROOT / "test_data.csv")
-    st.info("Using the repository's packaged test_data.csv. Upload another compatible test CSV from the sidebar to re-evaluate the models.")
-else:
-    df = pd.read_csv(uploaded)
-    st.success(f"Loaded uploaded test file with {len(df)} rows.")
+try:
+    if uploaded is None:
+        df = pd.read_csv(ROOT / "test_data.csv")
+        data_source = "Packaged holdout set"
+    else:
+        df = pd.read_csv(uploaded)
+        data_source = uploaded.name
+except (pd.errors.ParserError, pd.errors.EmptyDataError, UnicodeDecodeError) as exc:
+    st.error(f"The CSV could not be read: {exc}", icon=":material/error:")
+    st.stop()
 
 required = features + [metadata["target"]]
 missing = [c for c in required if c not in df.columns]
 if missing:
-    st.error("The uploaded CSV is missing required columns: " + ", ".join(missing))
+    st.error("Missing required columns: " + ", ".join(missing), icon=":material/error:")
     st.stop()
 
 try:
     X = df[features].apply(pd.to_numeric, errors="raise")
-    y = pd.to_numeric(df[metadata["target"]], errors="raise").astype(int)
-except Exception as exc:
-    st.error(f"All feature and target values must be numeric. Details: {exc}")
+    y_numeric = pd.to_numeric(df[metadata["target"]], errors="raise")
+except (TypeError, ValueError) as exc:
+    st.error(f"Features and diagnosis must be numeric: {exc}", icon=":material/error:")
     st.stop()
 
-if not set(y.unique()).issubset({0, 1}):
-    st.error("The diagnosis column must contain only 0 (benign) and 1 (malignant).")
+if set(y_numeric.unique()) != {0, 1}:
+    st.error("Evaluation requires both diagnosis classes, encoded exactly as 0 and 1.", icon=":material/error:")
     st.stop()
+y = y_numeric.astype(int)
 
-# Overall comparison on current test data.
 comparison_rows = []
 cache = {}
 for name, model in models.items():
@@ -138,87 +138,114 @@ for name, model in models.items():
     except ValueError as exc:
         st.error(f"Could not evaluate {name}: {exc}")
         st.stop()
-    cache[name] = (m, pred, prob)
-    comparison_rows.append({"ML Model Name": name, **m})
+    model_cm = confusion_matrix(y, pred, labels=[0, 1])
+    cache[name] = (m, pred, prob, model_cm)
+    comparison_rows.append({"Model": name, **m, "False negatives": int(model_cm[1, 0])})
 
 comparison = pd.DataFrame(comparison_rows)
 comparison = comparison.sort_values(["MCC", "F1", "AUC"], ascending=False).reset_index(drop=True)
-
-left, right = st.columns([1.25, 1])
-with left:
-    st.subheader("Dataset Snapshot")
-    st.dataframe(df.head(10), use_container_width=True)
-with right:
-    st.subheader("Dataset Summary")
-    c1, c2 = st.columns(2)
-    c1.metric("Rows", f"{len(df):,}")
-    c2.metric("Features", len(features))
-    counts = y.value_counts().to_dict()
-    c3, c4 = st.columns(2)
-    c3.metric("Malignant", int(counts.get(1, 0)))
-    c4.metric("Benign", int(counts.get(0, 0)))
-    with st.container(border=True):
-        st.markdown(f"**Source:** {metadata['dataset_name']}")
-        st.markdown("**Positive class:** malignant (1)")
-
-st.subheader("All-Model Comparison")
-st.dataframe(
-    comparison.style.format({c: "{:.4f}" for c in ["Accuracy", "AUC", "Precision", "Recall", "F1", "MCC"]}),
-    use_container_width=True,
-    hide_index=True,
-)
-
-st.subheader(f"Selected Model: {selected_model}")
-metrics, predictions, probabilities = cache[selected_model]
-metric_cols = st.columns(6)
-for col, key in zip(metric_cols, ["Accuracy", "AUC", "Precision", "Recall", "F1", "MCC"]):
-    col.metric(key, f"{metrics[key]:.4f}")
-
-cm = confusion_matrix(y, predictions, labels=[0, 1])
-plot_col, report_col = st.columns([1, 1.25])
-with plot_col:
-    st.markdown("#### Confusion Matrix")
-    fig, ax = plt.subplots(figsize=(4.4, 3.7))
-    image = ax.imshow(cm, interpolation="nearest")
-    fig.colorbar(image, ax=ax, fraction=0.046, pad=0.04)
-    ax.set(
-        xticks=[0, 1],
-        yticks=[0, 1],
-        xticklabels=["Benign (0)", "Malignant (1)"],
-        yticklabels=["Benign (0)", "Malignant (1)"],
-        ylabel="Actual",
-        xlabel="Predicted",
-    )
-    for i in range(2):
-        for j in range(2):
-            ax.text(j, i, int(cm[i, j]), ha="center", va="center")
-    fig.tight_layout()
-    st.pyplot(fig, clear_figure=True)
-
-with report_col:
-    st.markdown("#### Classification Report")
-    report = classification_report(
-        y,
-        predictions,
-        labels=[0, 1],
-        target_names=["Benign", "Malignant"],
-        output_dict=True,
-        zero_division=0,
-    )
-    report_df = pd.DataFrame(report).transpose()
-    st.dataframe(report_df.style.format("{:.4f}"), use_container_width=True)
-
-st.markdown("#### Prediction Preview")
-preview = pd.DataFrame({
-    "Actual": y.values,
-    "Predicted": predictions,
-    "Malignant probability": probabilities,
-})
-preview["Actual label"] = preview["Actual"].map({0: "Benign", 1: "Malignant"})
-preview["Predicted label"] = preview["Predicted"].map({0: "Benign", 1: "Malignant"})
-st.dataframe(preview.head(25), use_container_width=True, hide_index=True)
-
+comparison.insert(0, "Rank", comparison.index + 1)
 winner = comparison.iloc[0]
-st.caption(
-    f"Current test-data winner by MCC (tie-breakers: F1 then AUC): {winner['ML Model Name']} · MCC {winner['MCC']:.4f}."
+counts = y.value_counts().to_dict()
+
+summary_cols = st.columns(4)
+summary_cols[0].metric("Cases", f"{len(df):,}")
+summary_cols[1].metric("Malignant", int(counts.get(1, 0)))
+summary_cols[2].metric("Benign", int(counts.get(0, 0)))
+summary_cols[3].metric("Best MCC", f"{winner['MCC']:.4f}")
+st.caption(f"Source: {data_source} · {metadata['dataset_name']}")
+
+view = st.segmented_control(
+    "Workspace",
+    ["Model comparison", "Selected model", "Predictions"],
+    default="Model comparison",
+    label_visibility="collapsed",
 )
+
+metrics, predictions, probabilities, cm = cache[selected_model]
+
+if view == "Model comparison":
+    st.header("Model comparison")
+    st.caption("Ranked by MCC, then F1 and AUC. False negatives are malignant cases predicted as benign.")
+    st.dataframe(
+        comparison.style.format({c: "{:.4f}" for c in ["Accuracy", "AUC", "Precision", "Recall", "F1", "MCC"]}),
+        width="stretch",
+        hide_index=True,
+    )
+    st.success(
+        f"{winner['Model']} leads this test set with MCC {winner['MCC']:.4f}.",
+        icon=":material/verified:",
+    )
+    with st.expander("Preview evaluation data", icon=":material/database:"):
+        st.dataframe(df.head(10), width="stretch", hide_index=True)
+
+elif view == "Selected model":
+    st.header(selected_model)
+    st.caption(MODEL_SUMMARIES[selected_model])
+    top_metrics = st.columns(3)
+    top_metrics[0].metric("Malignant recall", f"{metrics['Recall']:.4f}")
+    top_metrics[1].metric("Malignant precision", f"{metrics['Precision']:.4f}")
+    top_metrics[2].metric("MCC", f"{metrics['MCC']:.4f}")
+    secondary_metrics = st.columns(3)
+    secondary_metrics[0].metric("Accuracy", f"{metrics['Accuracy']:.4f}")
+    secondary_metrics[1].metric("AUC", f"{metrics['AUC']:.4f}")
+    secondary_metrics[2].metric("F1", f"{metrics['F1']:.4f}")
+
+    tn, fp, fn, tp = cm.ravel()
+    matrix_col, report_col = st.columns([0.9, 1.4])
+    with matrix_col:
+        with st.container(border=True):
+            st.subheader("Confusion matrix")
+            cm_df = pd.DataFrame(
+                cm,
+                index=["Actual benign", "Actual malignant"],
+                columns=["Predicted benign", "Predicted malignant"],
+            )
+            st.dataframe(cm_df, width="stretch")
+            outcome_cols = st.columns(2)
+            outcome_cols[0].metric("Missed malignant", int(fn), help="False negatives")
+            outcome_cols[1].metric("Benign flagged", int(fp), help="False positives")
+    with report_col:
+        st.subheader("Classification report")
+        report = classification_report(
+            y,
+            predictions,
+            labels=[0, 1],
+            target_names=["Benign", "Malignant"],
+            output_dict=True,
+            zero_division=0,
+        )
+        report_df = pd.DataFrame(report).transpose()
+        st.dataframe(report_df.style.format("{:.4f}"), width="stretch")
+
+    if fn:
+        st.warning(f"This model missed {int(fn)} malignant case(s) in the current test data.", icon=":material/warning:")
+    else:
+        st.success("No malignant cases were missed in the current test data.", icon=":material/check_circle:")
+
+else:
+    st.header("Prediction review")
+    preview = pd.DataFrame({
+        "Actual": y.map({0: "Benign", 1: "Malignant"}).values,
+        "Predicted": pd.Series(predictions).map({0: "Benign", 1: "Malignant"}),
+        "Malignancy probability": probabilities,
+    })
+    preview["Outcome"] = preview.apply(
+        lambda row: "Correct" if row["Actual"] == row["Predicted"] else "Error",
+        axis=1,
+    )
+    only_errors = st.toggle("Show prediction errors only")
+    visible_preview = preview[preview["Outcome"] == "Error"] if only_errors else preview
+    st.dataframe(
+        visible_preview,
+        width="stretch",
+        hide_index=True,
+        column_config={
+            "Malignancy probability": st.column_config.ProgressColumn(
+                "Malignancy probability",
+                min_value=0.0,
+                max_value=1.0,
+                format="%.3f",
+            )
+        },
+    )
